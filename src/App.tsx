@@ -643,7 +643,7 @@ export default function App() {
               <span>Fitzswimming</span>
             </h1>
             <p className="text-xs text-slate-400 mt-1 font-medium">
-              Swim Workout Prescriptions & Split Logging
+              Swim Coaching App
             </p>
           </div>
 
