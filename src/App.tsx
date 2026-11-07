@@ -1,14 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { User, InviteCode, SwimSet, Workout, StrokeType } from './types/swim';
-import {
-  loadLocal,
-  saveLocal,
-  DEFAULT_COACH,
-  DEFAULT_SWIMMER_1,
-  DEFAULT_SWIMMER_2,
-  DEFAULT_INVITES,
-  DEFAULT_WORKOUTS
-} from './utils/storage';
+import { supabase } from './lib/supabaseClient';
+import { fetchVisibleProfiles, fetchInvitesForCoach, fetchVisibleWorkouts, rowToUser, rowToInvite, rowToWorkout, workoutToRow } from './lib/db';
 import {
   formatDateKey,
   formatDisplayDate,
@@ -149,25 +143,68 @@ const Icons = {
 };
 
 export default function App() {
-  // --- Persistent Storage State ---
-  const [users, setUsers] = useState<User[]>(() =>
-    loadLocal<User[]>('users', [DEFAULT_COACH, DEFAULT_SWIMMER_1, DEFAULT_SWIMMER_2])
-  );
-  const [invites, setInvites] = useState<InviteCode[]>(() =>
-    loadLocal<InviteCode[]>('invites', DEFAULT_INVITES)
-  );
-  const [workouts, setWorkouts] = useState<Workout[]>(() =>
-    loadLocal<Workout[]>('workouts', DEFAULT_WORKOUTS)
-  );
-  const [currentUser, setCurrentUser] = useState<User | null>(() =>
-    loadLocal<User | null>('session_user', null)
-  );
+  // --- Persistent Storage State (Supabase-backed) ---
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [users, setUsers] = useState<User[]>([]);
+  const [invites, setInvites] = useState<InviteCode[]>([]);
+  const [workouts, setWorkouts] = useState<Workout[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  // Sync to local storage
-  useEffect(() => saveLocal('users', users), [users]);
-  useEffect(() => saveLocal('invites', invites), [invites]);
-  useEffect(() => saveLocal('workouts', workouts), [workouts]);
-  useEffect(() => saveLocal('session_user', currentUser), [currentUser]);
+  // Bootstrap the auth session and keep it in sync across tabs/refreshes
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setAuthLoading(false);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setAuthLoading(false);
+    });
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  // Load the logged-in user's profile whenever the session changes
+  useEffect(() => {
+    if (!session) {
+      setCurrentUser(null);
+      return;
+    }
+    let cancelled = false;
+    supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', session.user.id)
+      .single()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        setCurrentUser(data && !error ? rowToUser(data) : null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
+
+  // Load everything the current user is allowed to see (RLS scopes the rows)
+  useEffect(() => {
+    if (!currentUser) {
+      setUsers([]);
+      setWorkouts([]);
+      setInvites([]);
+      return;
+    }
+    let cancelled = false;
+    fetchVisibleProfiles().then(data => !cancelled && setUsers(data));
+    fetchVisibleWorkouts().then(data => !cancelled && setWorkouts(data));
+    if (currentUser.role === 'coach') {
+      fetchInvitesForCoach(currentUser.id).then(data => !cancelled && setInvites(data));
+    } else {
+      setInvites([]);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser]);
 
   // --- Auth Screen State ---
   const [isSignUp, setIsSignUp] = useState(false);
@@ -317,7 +354,7 @@ export default function App() {
   // ==========================================
   // AUTHENTICATION HANDLERS
   // ==========================================
-  const handleAuthSubmit = (e: React.FormEvent) => {
+  const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
     setAuthSuccess('');
@@ -336,12 +373,6 @@ export default function App() {
         return;
       }
 
-      const existing = users.find(u => u.email.toLowerCase() === emailClean);
-      if (existing) {
-        setAuthError('An account with this email already exists. Please log in.');
-        return;
-      }
-
       let matchedCoachId: string | null = null;
 
       if (authRole === 'swimmer') {
@@ -351,41 +382,51 @@ export default function App() {
           return;
         }
 
-        const validInvite = invites.find(inv => inv.code.toUpperCase() === codeInput);
-        if (!validInvite) {
+        const { data: redeemed, error: redeemError } = await supabase.rpc('redeem_invite_code', { p_code: codeInput });
+        const redeemedRow = redeemed?.[0];
+        if (redeemError || !redeemedRow) {
           setAuthError('Invalid Invite Code. Please check with your coach.');
           return;
         }
-        matchedCoachId = validInvite.coachId;
-
-        // Consume invite code
-        setInvites(prev => prev.filter(inv => inv.id !== validInvite.id));
+        matchedCoachId = redeemedRow.coach_id;
       }
 
-      const newUser: User = {
-        id: (authRole === 'coach' ? 'coach_' : 'swimmer_') + Date.now(),
-        name: authForm.name.trim(),
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: emailClean,
         password: passwordClean,
-        role: authRole,
-        coachId: matchedCoachId,
-        createdAt: new Date().toISOString()
-      };
+        options: {
+          data: {
+            name: authForm.name.trim(),
+            role: authRole,
+            coach_id: matchedCoachId
+          }
+        }
+      });
 
-      setUsers(prev => [...prev, newUser]);
-      setCurrentUser(newUser);
+      if (signUpError) {
+        setAuthError(signUpError.message);
+        return;
+      }
+      if (signUpData.user && signUpData.user.identities && signUpData.user.identities.length === 0) {
+        setAuthError('An account with this email already exists. Please log in.');
+        return;
+      }
+
       setAuthSuccess('Account registered successfully!');
     } else {
-      const foundUser = users.find(u => u.email.toLowerCase() === emailClean && u.password === passwordClean);
-      if (!foundUser) {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: emailClean,
+        password: passwordClean
+      });
+      if (signInError) {
         setAuthError('Invalid email or password. Please try again.');
         return;
       }
-      setCurrentUser(foundUser);
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     setCurrentUser(null);
     setSelectedSwimmerId(null);
     setShowWorkoutModal(false);
@@ -397,41 +438,52 @@ export default function App() {
     setAuthSuccess('');
   };
 
-  const handleQuickLogin = (role: 'coach' | 'swimmer', swimmerId?: string) => {
-    if (role === 'coach') {
-      const coach = users.find(u => u.role === 'coach') || DEFAULT_COACH;
-      setCurrentUser(coach);
-      setSelectedSwimmerId(coachSwimmers[0]?.id || DEFAULT_SWIMMER_1.id);
-    } else {
-      const targetId = swimmerId || DEFAULT_SWIMMER_1.id;
-      const swimmer = users.find(u => u.id === targetId) || DEFAULT_SWIMMER_1;
-      setCurrentUser(swimmer);
-    }
+  // Fixed demo accounts — create these manually in the Supabase dashboard to use this.
+  const handleQuickLogin = async (role: 'coach' | 'swimmer') => {
+    const demoCredentials: Record<'coach' | 'swimmer', { email: string; password: string }> = {
+      coach: { email: 'collin@coach.com', password: 'password123' },
+      swimmer: { email: 'thor@swimmer.com', password: 'password123' }
+    };
+    await supabase.auth.signInWithPassword(demoCredentials[role]);
     setMobileViewTab('calendar');
   };
 
   // ==========================================
   // COACH INVITE CODE GENERATOR
   // ==========================================
-  const generateNewInviteCode = () => {
+  const generateNewInviteCode = async () => {
     if (!currentUser) return;
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let code = '';
-    for (let i = 0; i < 6; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      let code = '';
+      for (let i = 0; i < 6; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+
+      const { data, error } = await supabase
+        .from('invites')
+        .insert({ code, coach_id: currentUser.id, coach_name: currentUser.name })
+        .select()
+        .single();
+
+      if (!error && data) {
+        setInvites(prev => [rowToInvite(data), ...prev]);
+        setNewlyGeneratedCode(code);
+        setCopiedNotification(false);
+        return;
+      }
+
+      // 23505 = unique_violation; retry with a freshly generated code.
+      if (error?.code !== '23505') return;
     }
+  };
 
-    const newInvite: InviteCode = {
-      id: 'inv_' + Date.now(),
-      code,
-      coachId: currentUser.id,
-      coachName: currentUser.name,
-      createdAt: new Date().toISOString()
-    };
-
-    setInvites(prev => [newInvite, ...prev]);
-    setNewlyGeneratedCode(code);
-    setCopiedNotification(false);
+  const handleRevokeInvite = async (inviteId: string) => {
+    const { error } = await supabase.from('invites').delete().eq('id', inviteId);
+    if (!error) {
+      setInvites(prev => prev.filter(x => x.id !== inviteId));
+    }
   };
 
   const copyToClipboard = (code: string) => {
@@ -502,12 +554,12 @@ export default function App() {
     }));
   };
 
-  const handleSaveWorkout = (e: React.FormEvent) => {
+  const handleSaveWorkout = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!targetSwimmerId || !selectedDateStr || !currentUser) return;
 
     const updatedWorkout: Workout = {
-      id: activeWorkout ? activeWorkout.id : 'w_' + Date.now(),
+      id: activeWorkout ? activeWorkout.id : crypto.randomUUID(),
       swimmerId: targetSwimmerId,
       coachId: currentUser.role === 'coach' ? currentUser.id : (activeSwimmer?.coachId || ''),
       date: selectedDateStr,
@@ -530,9 +582,21 @@ export default function App() {
       updatedAt: new Date().toISOString()
     };
 
+    const { data, error } = await supabase
+      .from('workouts')
+      .upsert(workoutToRow(updatedWorkout), { onConflict: 'swimmer_id,date' })
+      .select()
+      .single();
+
+    if (error || !data) {
+      setSaveStatus('Could not save workout. Please try again.');
+      return;
+    }
+
+    const savedWorkout = rowToWorkout(data);
     setWorkouts(prev => {
       const filtered = prev.filter(w => !(w.swimmerId === targetSwimmerId && w.date === selectedDateStr));
-      return [...filtered, updatedWorkout];
+      return [...filtered, savedWorkout];
     });
 
     setSaveStatus('Workout prescribed successfully!');
@@ -542,16 +606,19 @@ export default function App() {
     }, 800);
   };
 
-  const handleDeleteWorkout = () => {
+  const handleDeleteWorkout = async () => {
     if (!activeWorkout) return;
-    setWorkouts(prev => prev.filter(w => w.id !== activeWorkout.id));
-    setShowWorkoutModal(false);
+    const { error } = await supabase.from('workouts').delete().eq('id', activeWorkout.id);
+    if (!error) {
+      setWorkouts(prev => prev.filter(w => w.id !== activeWorkout.id));
+      setShowWorkoutModal(false);
+    }
   };
 
   // ==========================================
   // SWIMMER FEEDBACK & TIME LOGGING HANDLERS
   // ==========================================
-  const handleSaveSwimmerFeedback = (e: React.FormEvent) => {
+  const handleSaveSwimmerFeedback = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeWorkout) return;
 
@@ -570,7 +637,20 @@ export default function App() {
       completedAt: new Date().toISOString()
     };
 
-    setWorkouts(prev => prev.map(w => (w.id === activeWorkout.id ? updatedWorkout : w)));
+    const { data, error } = await supabase
+      .from('workouts')
+      .update(workoutToRow(updatedWorkout))
+      .eq('id', activeWorkout.id)
+      .select()
+      .single();
+
+    if (error || !data) {
+      setSaveStatus('Could not save feedback. Please try again.');
+      return;
+    }
+
+    const savedWorkout = rowToWorkout(data);
+    setWorkouts(prev => prev.map(w => (w.id === activeWorkout.id ? savedWorkout : w)));
     setSaveStatus('Great effort! Your workout splits & feedback have been logged.');
     setTimeout(() => {
       setShowWorkoutModal(false);
@@ -632,6 +712,14 @@ export default function App() {
   // ==========================================
   // RENDER: AUTHENTICATION SCREEN
   // ==========================================
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <Icons.Waves className="w-8 h-8 text-cyan-400 animate-pulse" />
+      </div>
+    );
+  }
+
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center p-4 relative overflow-hidden">
@@ -806,7 +894,7 @@ export default function App() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleQuickLogin('swimmer', DEFAULT_SWIMMER_1.id)}
+                    onClick={() => handleQuickLogin('swimmer')}
                     className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 rounded-xl border border-slate-700 transition flex items-center justify-center space-x-1.5"
                   >
                     <Icons.Waves className="w-3.5 h-3.5 text-sky-400" />
@@ -1347,7 +1435,7 @@ export default function App() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => setInvites(prev => prev.filter(x => x.id !== inv.id))}
+                              onClick={() => handleRevokeInvite(inv.id)}
                               className="text-rose-400 hover:text-rose-300 p-1"
                               title="Delete code"
                             >
