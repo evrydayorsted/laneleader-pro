@@ -18,6 +18,9 @@ import {
 } from './utils/swimCalculators';
 import { PrintWorkoutModal } from './components/PrintWorkoutModal';
 
+// Toggle to re-enable the one-click demo profile buttons on the login screen for debugging.
+const SHOW_DEMO_PROFILES = false;
+
 // Bulletproof SVG Icons Dictionary with strict types
 interface IconProps extends React.SVGProps<SVGSVGElement> {
   className?: string;
@@ -787,29 +790,31 @@ export default function App() {
             </div>
 
             {/* Quick Demo Switcher */}
-            <div className="mt-6 pt-5 border-t border-slate-800 text-center">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2.5">
-                Instant 1-Click Demo Profiles
-              </span>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleQuickLogin('coach')}
-                  className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 rounded-xl border border-slate-700 transition flex items-center justify-center space-x-1.5"
-                >
-                  <Icons.Award className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>Coach Collin</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickLogin('swimmer', DEFAULT_SWIMMER_1.id)}
-                  className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 rounded-xl border border-slate-700 transition flex items-center justify-center space-x-1.5"
-                >
-                  <Icons.Waves className="w-3.5 h-3.5 text-sky-400" />
-                  <span>Swimmer Thor</span>
-                </button>
+            {SHOW_DEMO_PROFILES && (
+              <div className="mt-6 pt-5 border-t border-slate-800 text-center">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2.5">
+                  Instant 1-Click Demo Profiles
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleQuickLogin('coach')}
+                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 rounded-xl border border-slate-700 transition flex items-center justify-center space-x-1.5"
+                  >
+                    <Icons.Award className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Coach Collin</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickLogin('swimmer', DEFAULT_SWIMMER_1.id)}
+                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 rounded-xl border border-slate-700 transition flex items-center justify-center space-x-1.5"
+                  >
+                    <Icons.Waves className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Swimmer Thor</span>
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
