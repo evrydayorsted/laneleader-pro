@@ -1507,7 +1507,6 @@ export default function App() {
                     <input
                       type="text"
                       required
-                      placeholder="e.g., Threshold Free & Stroke Aerobic"
                       value={workoutForm.title}
                       onChange={e => setWorkoutForm({ ...workoutForm, title: e.target.value })}
                       className="w-full px-3.5 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
@@ -1531,7 +1530,6 @@ export default function App() {
                   <label className="block text-xs font-semibold uppercase text-slate-300 mb-1">Session Objectives & Notes</label>
                   <textarea
                     rows={2}
-                    placeholder="e.g., Descend stroke counts, hold steady elbow catch, fast breakouts on wall turns."
                     value={workoutForm.description}
                     onChange={e => setWorkoutForm({ ...workoutForm, description: e.target.value })}
                     className="w-full px-3.5 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
@@ -1623,7 +1621,6 @@ export default function App() {
                             <label className="text-[10px] text-slate-400 font-semibold uppercase">Interval</label>
                             <input
                               type="text"
-                              placeholder="e.g. 1:30"
                               value={set.interval || ''}
                               onChange={e => handleUpdateSet(set.id, 'interval', e.target.value)}
                               className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-white text-xs text-center font-mono"
@@ -1635,7 +1632,6 @@ export default function App() {
                         <div>
                           <input
                             type="text"
-                            placeholder="Set instructions / pacing (e.g. Descend 1-4, max effort turns)"
                             value={set.notes || ''}
                             onChange={e => handleUpdateSet(set.id, 'notes', e.target.value)}
                             className="w-full px-2.5 py-1.5 bg-slate-900/60 border border-slate-700/80 rounded-lg text-slate-300 text-xs"
@@ -1695,19 +1691,20 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Coach Feedback Note to Swimmer */}
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-cyan-300 mb-1">
-                    Coach Response / Technical Guidance
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Great pace control on the 100s Thor! Tomorrow focus on dolphin kick breakouts."
-                    value={workoutForm.coachReview}
-                    onChange={e => setWorkoutForm({ ...workoutForm, coachReview: e.target.value })}
-                    className="w-full px-3.5 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white text-xs focus:ring-2 focus:ring-cyan-500"
-                  />
-                </div>
+                {/* Coach Feedback Note to Swimmer — only once the swimmer has logged their own experience/performance */}
+                {!!(activeWorkout?.completed || activeWorkout?.feedback || activeWorkout?.sets?.some(s => s.completedTime || s.swimmerNotes)) && (
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-cyan-300 mb-1">
+                      Coach Response / Technical Guidance
+                    </label>
+                    <input
+                      type="text"
+                      value={workoutForm.coachReview}
+                      onChange={e => setWorkoutForm({ ...workoutForm, coachReview: e.target.value })}
+                      className="w-full px-3.5 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white text-xs focus:ring-2 focus:ring-cyan-500"
+                    />
+                  </div>
+                )}
 
                 {/* Modal Footer Controls */}
                 <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
