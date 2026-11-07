@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#082f49" />
+      <stop offset="50%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#083344" />
+    </linearGradient>
+    <linearGradient id="waveGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#06b6d4" />
+      <stop offset="50%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#2dd4bf" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background with rounded corners for squircle / app icon -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)" />
+  <rect width="504" height="504" x="4" y="4" rx="108" fill="none" stroke="#0ea5e9" stroke-width="4" stroke-opacity="0.3" />
+
+  <!-- Swimming Waves Icon -->
+  <g transform="translate(64, 96)" filter="url(#glow)">
+    <!-- Wave 1 -->
+    <path d="M20 70 c30 25 60 25 90 0 c30 -25 60 -25 90 0 c30 25 60 25 90 0 c30 -25 60 -25 90 0" 
+          fill="none" stroke="url(#waveGrad)" stroke-width="26" stroke-linecap="round" stroke-linejoin="round" />
+    
+    <!-- Wave 2 -->
+    <path d="M20 160 c30 25 60 25 90 0 c30 -25 60 -25 90 0 c30 25 60 25 90 0 c30 -25 60 -25 90 0" 
+          fill="none" stroke="url(#waveGrad)" stroke-width="26" stroke-linecap="round" stroke-linejoin="round" />
+    
+    <!-- Wave 3 -->
+    <path d="M20 250 c30 25 60 25 90 0 c30 -25 60 -25 90 0 c30 25 60 25 90 0 c30 -25 60 -25 90 0" 
+          fill="none" stroke="url(#waveGrad)" stroke-width="26" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+
+  <!-- Small stopwatch accent -->
+  <circle cx="390" cy="120" r="14" fill="#38bdf8" />
+</svg>
